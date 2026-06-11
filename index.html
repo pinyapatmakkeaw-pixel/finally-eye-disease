@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EyeGuard - ระบบคัดกรองและให้ความรู้โรคตาเบื้องต้น</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --bg-main: #0b111e;
+            --card-bg: #162235;
+            --primary: #2563eb;
+            --primary-light: #1e3a8a;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #1e293b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Kanit', sans-serif; }
+        
+        body { 
+            background-color: var(--bg-main); 
+            color: var(--text-main); 
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 📱 แถบเมนูด้านบน (Navbar) ถอดแบบจากแอปของคุณ */
+        .navbar {
+            background: #0f172a;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .nav-logo i { color: var(--primary); font-size: 1.5rem; }
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+        .nav-item {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .nav-item:hover, .nav-item.active {
+            color: var(--text-main);
+            background: var(--primary-light);
+        }
+
+        /* ส่วนจัดหน้าเว็บย่อย (Page Routing) */
+        .page { display: none; padding: 25px 15px; max-width: 480px; margin: 0 auto; width: 100%; }
+        .page.active { display: block; }
+
+        .app-container { 
+            background: var(--card-bg); 
+            border-radius: 24px; 
+            padding: 30px 20px; 
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3); 
+            border: 1px solid var(--border-color); 
+            text-align: center;
+        }
+
+        header h1 { font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+        header p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 25px; }
+
+        .status-badge { 
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; 
+            background: #1e293b; color: var(--text-muted); 
+            margin-bottom: 20px; font-weight: 500;
+        }
+
+        .display-box { 
+            position: relative; width: 100%; aspect-ratio: 4/3; 
+            background: #020617; border-radius: 18px; overflow: hidden; 
+            border: 1px solid var(--border-color); margin-bottom: 25px; 
+            display: flex; justify-content: center; align-items: center; 
+        }
+        #webcam-container, #image-preview { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        #webcam-container video, #image-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+        .scan-line {
+            position: absolute; width: 100%; height: 3px;
+            background: linear-gradient(to bottom, transparent, var(--primary), transparent);
+            top: 0; left: 0; z-index: 5; display: none;
+            animation: scanAnim 2.5s linear infinite;
+        }
+        @keyframes scanAnim { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+
+        .control-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 25px; }
+        .btn { 
+            border: none; padding: 14px 20px; font-size: 1rem; font-weight: 600; border-radius: 14px; 
+            cursor: pointer; width: 100%; transition: all 0.2s; display: flex; justify-content: center; align-items: center; gap: 10px;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: #1e293b; color: var(--text-main); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: #334155; }
+        .btn:disabled { background: #1e293b !important; color: #64748b !important; cursor: not-allowed; }
+
+        .result-box { margin-top: 10px; padding: 20px; background: #0f172a; border-radius: 18px; border: 1px solid var(--border-color); display: none; }
+        .prediction-bar { margin-bottom: 15px; text-align: left; }
+        .prediction-bar:last-child { margin-bottom: 0; }
+        .label-text { display: flex; justify-content: space-between; font-size: 0.95rem; margin-bottom: 6px; font-weight: 500; }
+        .progress-track { width: 100%; height: 10px; background: #1e293b; border-radius: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: var(--primary); transition: width 0.3s ease; }
+
+        /* การ์ดอันตรายรุนแรงที่จะเตือนเพิ่มเมื่อเปอร์เซ็นต์เยอะที่สุด */
+        .danger-alert-box {
+            background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger);
+            color: #fca5a5; padding: 10px; border-radius: 10px; font-size: 0.85rem; margin-top: 5px; font-weight: bold;
+        }
+
+        .medical-disclaimer {
+            margin-top: 25px; padding: 16px; background: #1c251d; border-radius: 16px; border: 1px solid rgba(16, 185, 129, 0.2);
+            text-align: left; font-size: 0.85rem; line-height: 1.6; color: #a7f3d0; display: none;
+        }
+
+        /* 📘 สไตล์หน้าบทความความรู้โรคตา (Knowledge Page) */
+        .info-card {
+            background: var(--card-bg); border-radius: 20px; padding: 20px; margin-bottom: 20px;
+            border: 1px solid var(--border-color); text-align: left;
+        }
+        .info-card h2 { font-size: 1.3rem; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; color: #38bdf8;}
+        .info-card h3 { font-size: 0.95rem; color: var(--warning); margin: 10px 0 4px 0; }
+        .info-card p, .info-card ul { font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; padding-left: 15px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="nav-logo"><i class="fa-solid fa-eye-shield"></i> EyeGuard</div>
+        <div class="nav-links">
+            <span class="nav-item active" onclick="switchPage('scan-page')">สแกนตา</span>
+            <span class="nav-item" onclick="switchPage('info-page')">โรคตาที่ควรรู้</span>
+        </div>
+    </nav>
+
+    <div id="scan-page" class="page active">
+        <div class="app-container">
+            <header>
+                <h1>Eye Scanner</h1>
+                <p>ตรวจสอบสิทธิ์และวิเคราะห์ภาพถ่ายดวงตา</p>
+            </header>
+
+            <div id="status-badge" class="status-badge">
+                <i class="fa-solid fa-sync fa-spin"></i> กำลังโหลดสมองกล AI...
+            </div>
+
+            <div class="display-box">
+                <div id="scan-line" class="scan-line"></div>
+                <div id="webcam-container"></div>
+                <div id="image-preview"></div>
+                <div id="placeholder-icon" style="color: #334155; font-size: 4rem; position: absolute; z-index: 1;">
+                    <i class="fa-solid fa-user-shield"></i>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <button id="start-btn" class="btn btn-primary" onclick="initWebcam()" disabled>
+                    <i class="fa-solid fa-camera"></i> เปิดกล้องสแกนดวงตา
+                </button>
+                <button id="upload-trigger" class="btn btn-secondary" onclick="document.getElementById('file-input').click()" disabled>
+                    <i class="fa-solid fa-image"></i> เลือกรูปภาพจากคลัง
+                </button>
+                <input type="file" id="file-input" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+            </div>
+
+            <div id="result-box" class="result-box">
+                <div id="label-container"></div>
+            </div>
+
+            <div id="disclaimer" class="medical-disclaimer">
+                <p><i class="fa-solid fa-user-md"></i> <strong>คำแนะนำแพทย์วิเคราะห์เบื้องต้น:</strong> 
+                ระบบจำลองผลสถิตินี้จัดทำขึ้นโดยเทคโนโลยีประมวลผลรูปภาพ (AI) เพื่อคัดกรองสัญญาณเริ่มต้น **ไม่ถือเป็นการวินิจฉัยทางการแพทย์** หากพบความสี่ยงสูงโปรดเข้ารับการวินิจฉัยจากจักษุแพทย์เพื่อทำการรักษาอย่างถูกต้อง</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="info-page" class="page">
+        <div class="info-card">
+            <h2><i class="fa-solid fa-circle-dot"></i> โรคต้อหิน (Glaucoma)</h2>
+            <h3>📌 อาการที่พบได้บ่อย</h3>
+            <p>ตามัวลงอย่างช้าๆ, ขอบฟิลด์สายตาแคบลงเหมือนมองผ่านท่อ, หากเป็นแบบเฉียบพลันอาจมีอาการปวดตาอย่างรุนแรงและตาแดงร่วมด้วย</p>
+            <h3>🛡️ วิธีการป้องกัน</h3>
+            <p>ควรเข้ารับการตรวจวัดความดันลูกตาเป็นประจำทุกปี โดยเฉพาะผู้ที่มีอายุ 40 ปีขึ้นไป หรือมีประวัติบุคคลในครอบครัวเคยเป็นโรคนี้</p>
+        </div>
+
+        <div class="info-card">
+            <h2><i class="fa-solid fa-eye-dropper"></i> โรคต้อเนื้อ (Pterygium)</h2>
+            <h3>📌 อาการที่พบได้บ่อย</h3>
+            <p>มีแผ่นเนื้อเยื่อรูปสามเหลี่ยมสีออกแดงลุกรามเข้าสู่ตาดำ, ระคายเคืองตา, แสบตา, รู้สึกเหมือนมีเม็ดทรายค้างอยู่ในดวงตาตลอดเวลา</p>
+            <h3>🛡️ วิธีการป้องกัน</h3>
+            <p>หลีกเลี่ยงการเผชิญหน้ากับแสงแดดจัด ฝุ่นละออง และควัน โดยการสวมใส่แว่นตากันแดดที่กรองรังสี UV ทุกครั้งเมื่อออกไปทำกิจกรรมกลางแจ้ง</p>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        const URL = "./"; 
+        let model, webcam, labelContainer, maxClassIdentifiers, isWebcamMode = false;
+
+        // ระบบควบคุมสลับเปลี่ยนหน้าเว็บไซต์
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            
+            document.getElementById(pageId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function loadModel() {
+            try {
+                model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+                maxClassIdentifiers = model.getTotalClasses();
+                document.getElementById("status-badge").innerHTML = '<i class="fa-solid fa-circle-check"></i> ระบบโมเดล AI พร้อมทำงาน';
+                document.getElementById("status-badge").style.color = "var(--success)";
+                document.getElementById("start-btn").disabled = false;
+                document.getElementById("upload-trigger").disabled = false;
+            } catch (e) {
+                document.getElementById("status-badge").innerHTML = '<i class="fa-solid fa-circle-xmark"></i> ตรวจสอบไฟล์โมเดลในคลัง';
+            }
+        }
+
+        async function initWebcam() {
+            isWebcamMode = true;
+            document.getElementById("start-btn").disabled = true;
+            document.getElementById("image-preview").innerHTML = "";
+            document.getElementById("placeholder-icon").style.display = "none";
+            document.getElementById("scan-line").style.display = "block";
+            document.getElementById("result-box").style.display = "block";
+            document.getElementById("disclaimer").style.display = "block";
+
+            try {
+                webcam = new tmImage.Webcam(400, 300, false);
+                await webcam.setup({ facingMode: "environment" }); 
+                await webcam.play();
+                window.requestAnimationFrame(loopWebcam);
+                document.getElementById("webcam-container").innerHTML = "";
+                document.getElementById("webcam-container").appendChild(webcam.canvas);
+                setupResultUI();
+            } catch (err) {
+                alert("กรุณาเปิดสิทธิ์ให้เข้าถึงกล้อง");
+            }
+        }
+
+        async function loopWebcam() { if (isWebcamMode) { webcam.update(); await predict(webcam.canvas); window.requestAnimationFrame(loopWebcam); } }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0]; if (!file) return;
+            if (isWebcamMode && webcam) { await webcam.stop(); isWebcamMode = false; document.getElementById("webcam-container").innerHTML = ""; }
+            document.getElementById("placeholder-icon").style.display = "none";
+            document.getElementById("scan-line").style.display = "block";
+            document.getElementById("result-box").style.display = "block";
+            document.getElementById("disclaimer").style.display = "block";
+            document.getElementById("start-btn").disabled = false;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById("image-preview").innerHTML = `<img id="uploaded-img" src="${e.target.result}">`;
+                const img = new Image(); img.src = e.target.result;
+                img.onload = async function() { setupResultUI(); await predict(img); }
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function setupResultUI() {
+            labelContainer = document.getElementById("label-container");
+            labelContainer.innerHTML = "";
+            for (let i = 0; i < maxClassIdentifiers; i++) {
+                labelContainer.insertAdjacentHTML('beforeend', `
+                    <div class="prediction-bar">
+                        <div class="label-text">
+                            <span id="class-name-${i}">-</span>
+                            <span id="class-pct-${i}">0%</span>
+                        </div>
+                        <div class="progress-track"><div id="bar-fill-${i}" class="progress-fill"></div></div>
+                        <div id="alert-box-${i}"></div>
+                    </div>`);
+            }
+        }
+
+        // ประมวลผลและเช็กว่าอันไหนเปอร์เซ็นต์สูงที่สุดให้ขึ้นอิโมจิระวังรัวๆ
+        async function predict(inputElement) {
+            const prediction = await model.predict(inputElement);
+            
+            // หาดัชนี (Index) ของตัวเลือกที่ได้ค่าเปอร์เซ็นต์คะแนนสูงที่สุดในกลุ่ม
+            let highestIndex = 0;
+            let highestValue = 0;
+            for (let i = 0; i < maxClassIdentifiers; i++) {
+                if (prediction[i].probability > highestValue) {
+                    highestValue = prediction[i].probability;
+                    highestIndex = i;
+                }
+            }
+
+            for (let i = 0; i < maxClassIdentifiers; i++) {
+                let className = prediction[i].className;
+                const probability = (prediction[i].probability * 100).toFixed(1);
+                
+                // ตรวจเช็กเงื่อนไขแสดงผลสลับชื่อ
+                if(className === 'ต้อหิน') className = "โรคต้อหิน (Glaucoma)";
+                if(className === 'ต้อเนื้อ') className = "โรคต้อเนื้อ (Pterygium)";
+                if(className.toLowerCase() === 'normal' || className === 'ปกติ') className = "สายตาปกติ (Normal Eye)";
+
+                document.getElementById(`class-pct-${i}`).innerText = probability + "%";
+                const barFill = document.getElementById(`bar-fill-${i}`);
+                barFill.style.width = probability + "%";
+
+                const alertArea = document.getElementById(`alert-box-${i}`);
+                
+                // 💥 เงื่อนไขสำคัญ: อันไหนคะแนนเยอะที่สุด ให้ขึ้นอิโมจิระวังแบบรัวๆ ทันที
+                if (i === highestIndex && (className.includes("ต้อหิน") || className.includes("ต้อเนื้อ")) && prediction[i].probability > 0.4) {
+                    document.getElementById(`class-name-${i}`).innerHTML = `🚨 🚨 <strong>${className}</strong>`;
+                    barFill.style.background = "var(--danger)";
+                    alertArea.innerHTML = `<div class="danger-alert-box">⚠️ [🚨 ตรวจพบสัญญาณความเสี่ยงสูงมาก! โปรดระมัดระวังเป็นพิเศษ]</div>`;
+                } else if (i === highestIndex && className.includes("ปกติ")) {
+                    document.getElementById(`class-name-${i}`).innerHTML = `✅ <strong>${className}</strong>`;
+                    barFill.style.background = "var(--success)";
+                    alertArea.innerHTML = "";
+                } else {
+                    document.getElementById(`class-name-${i}`).innerText = className;
+                    barFill.style.background = "var(--primary)";
+                    alertArea.innerHTML = ""; // ตัวที่คะแนนรองลงมาจะไม่มีแถบคำเตือนขึ้นเลยตามคำขอ
+                }
+            }
+        }
+
+        window.onload = loadModel;
+    </script>
+</body>
+</html>
